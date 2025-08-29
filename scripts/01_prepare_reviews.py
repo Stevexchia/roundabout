@@ -1,10 +1,10 @@
 """
-Normalize & clean raw Google reviews into a single schema.
+Normalize & clean raw Google reviews.
 
-Input  (default): data/raw/reviews.csv  (columns seen in your file)
+Input  (default): data/raw/reviews.csv 
   - business_name, author_name, text, photo, rating, rating_category
 
-Output: data/processed/reviews.csv  (columns)
+Output: data/processed/reviews.csv 
   - review_id, place_name, rating, rating_category, text, text_clean
 
 Notes:
@@ -17,7 +17,6 @@ from pathlib import Path
 import re
 import pandas as pd
 
-# ---- Optional deps: used if available, otherwise skipped gracefully
 try:
     from ftfy import fix_text
 except Exception:
@@ -39,7 +38,6 @@ def basic_clean(text: str) -> str:
         return ""
     text = text.strip()
     if fix_text:
-        # fix encoding if ftfy is available
         text = fix_text(text)
     text = text.lower()
     text = re.sub(r"\s+", " ", text)
@@ -55,7 +53,6 @@ def is_english(text: str) -> bool:
     try:
         return detect(text) == "en"
     except Exception:
-        # On detection failure, keep the row (be permissive)
         return True
 
 def main():
@@ -63,17 +60,15 @@ def main():
 
     df_raw = pd.read_csv(RAW_PATH)
 
-    # sanity: require a 'text' column
     if "text" not in df_raw.columns:
         raise ValueError("Expected a 'text' column in the raw CSV.")
 
     # drop rows without text
     df = df_raw.dropna(subset=["text"]).copy()
 
-    # optional language filter
+    # language filter to ensure that the text is in english
     df = df[df["text"].astype(str).map(is_english)]
 
-    # build normalized frame
     place_col = "business_name" if "business_name" in df.columns else "place_name"
     df_norm = pd.DataFrame({
         "review_id": range(1, len(df) + 1),
@@ -83,14 +78,11 @@ def main():
         "text": df["text"].astype(str),
     })
 
-    # cleaned text
     df_norm["text_clean"] = df_norm["text"].map(basic_clean)
 
-    # ensure output dir
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     df_norm.to_csv(OUT_PATH, index=False)
 
-    # quick report
     kept = len(df_norm)
     total = len(df_raw)
     print(f"✅ Saved {kept}/{total} rows → {OUT_PATH}")
