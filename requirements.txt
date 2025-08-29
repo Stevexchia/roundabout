@@ -1,0 +1,16 @@
+pandas
+numpy
+scikit-learn
+lightgbm
+regex
+langdetect
+ftfy
+tldextract
+sentence-transformers
+transformers
+fastapi
+uvicorn
+pydantic
+streamlit
+plotly
+joblib
