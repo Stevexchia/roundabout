@@ -1,0 +1,43 @@
+# ------------------
+# Python cache files
+# ------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+
+# ------------------
+# Virtual environments
+# ------------------
+.env
+.venv
+venv/
+ENV/
+
+# ------------------
+# Jupyter
+# ------------------
+.ipynb_checkpoints/
+
+# ------------------
+# Data files
+# ------------------
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# ------------------
+# Model outputs / logs
+# ------------------
+outputs/*
+experiments/*
+
+# ------------------
+# IDE / Editor configs
+# ------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
