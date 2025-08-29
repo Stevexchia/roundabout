@@ -70,6 +70,7 @@ tiktok-techjam/
 
 ## Team / Contributors
 
+* Steve Chia
 * Xie Yanjun
 * Tong Jia Jun
 * Venice Phua
