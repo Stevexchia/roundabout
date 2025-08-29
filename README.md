@@ -74,4 +74,3 @@ tiktok-techjam/
 * Tong Jia Jun
 * Venice Phua
 * Lee Sze Ying
-* Steve Chia
