@@ -57,14 +57,29 @@ tiktok-techjam/
 ---
 
 ## Running the Project
+- Ensure that you have gotten an API Key through the API request for GPT-4
+- While you can provide an api_key keyword argument, we recommend using python-dotenv to add OPENAI_API_KEY="My API Key" to your .env file so that your API key is not stored in source control. [[Get an API key here](https://platform.openai.com/settings/organization/api-keys)].
+
+Error codes are as follows:
+Status Code	Error Type
+400	BadRequestError
+401	AuthenticationError
+403	PermissionDeniedError
+404	NotFoundError
+422	UnprocessableEntityError
+429	RateLimitError
+>=500	InternalServerError
+N/A	APIConnectionError
 
 ---
 
-## Notes
+## FAQ/Notes
 
 * Ensure the `roundabout` conda environment is **active** before running scripts.
 * Outputs (models, predictions) are saved in `outputs/`.
 * Raw and processed data are **not tracked** in git (`.gitignore`) for team convenience.
+
+1. If src not found, do ensure that init.py has the correct syntax and your file path is correct
 
 ---
 
@@ -72,6 +87,6 @@ tiktok-techjam/
 
 * Steve Chia
 * Xie Yanjun
-* Tong Jia Jun
 * Venice Phua
+* Tong Jia Jun
 * Lee Sze Ying
