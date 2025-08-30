@@ -14,13 +14,13 @@ import json
 def main():
     # Parse arguments
     parser = argparse.ArgumentParser(description='Train policy classifiers')
-    parser.add_argument('--model-name', type=str, default='bert-base-uncased',
+    parser.add_argument('--model-name', type=str, default='distilbert-base-uncased',
                        help='Base model to use')
     parser.add_argument('--min-samples', type=int, default=5,
                        help='Minimum samples per class for training')
     args = parser.parse_args()
     
-    input_path = Path("data/labeled/reviews_with_labels.csv")
+    input_path = Path("data/labeled/reviews_validation.csv")
     output_dir = Path("outputs/models")
     
     print("Loading labeled data...")
@@ -29,11 +29,13 @@ def main():
     labeled_df = pd.read_csv(input_path)
     print(f"Loaded {len(labeled_df)} labeled reviews")
     
-    required_columns = ['text_clean', 'is_advertisement', 'is_irrelevant', 'is_rant_without_visit']
+    required_columns = ['rating_category', 'text_clean', 'is_advertisement', 'is_irrelevant', 'is_rant_without_visit']
     missing_cols = [col for col in required_columns if col not in labeled_df.columns]
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
     labeled_df = labeled_df.dropna(subset=['text_clean'])
+    labeled_df = labeled_df.dropna(subset=['rating_category'])
+    labeled_df = labeled_df.reset_index(drop=True)
     print(f"After filtering: {len(labeled_df)} reviews")
     
     print(f"\nClass Distribution:")
@@ -83,7 +85,7 @@ def main():
         raise
     
     print(f"\nTraining completed! Models saved in: {output_dir}")
-    print(f"Next step: Run evaluation with scripts/04_evaluate_models.py")
+    print(f"Next step: Run evaluation with scripts/04_eval.py")
 
 
 if __name__ == "__main__":

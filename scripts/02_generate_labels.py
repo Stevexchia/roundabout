@@ -19,7 +19,7 @@ def main():
                        default=os.getenv('OPENAI_API_KEY'))
     parser.add_argument('--model', type=str, default='gpt-4o', 
                        help='GPT model to use')
-    parser.add_argument('--ollama-model', type=str, default='gemma3:1b', 
+    parser.add_argument('--ollama-model', type=str, default='gemma3:4b', 
                         help='Ollama local model to use for fallback')
     parser.add_argument('--sample-size', type=int, default=None,
                        help='Number of reviews to label (default: all)')

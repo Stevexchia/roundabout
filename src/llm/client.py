@@ -27,7 +27,7 @@ class PolicyLabel:
 class LLMClient:
     """Client for interacting with OpenAI GPT models."""
     
-    def __init__(self, api_key: str, model: str = "gpt-4o", ollama_model: str = "gemma3:1b"):
+    def __init__(self, api_key: str, model: str = "gpt-4o", ollama_model: str = "gemma3:4b"):
         self.client = openai.OpenAI(api_key=api_key)
         self.model = model
         self.ollama_model = ollama_model

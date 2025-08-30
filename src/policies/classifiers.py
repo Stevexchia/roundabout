@@ -14,12 +14,22 @@ import numpy as np
 from typing import List, Dict, Tuple, Optional
 import pickle
 from pathlib import Path
+from torch.utils.data import Dataset
 
+class ReviewDataset(Dataset):
+    def __init__(self, encodings):
+        self.encodings = encodings
+        
+    def __len__(self):
+        return self.encodings['input_ids'].shape[0]
+    
+    def __getitem__(self, idx):
+        return {key: val[idx] for key, val in self.encodings.items()}
 
 class PolicyClassifier:
     """BERT-based classifier for policy violations."""
     
-    def __init__(self, model_name: str = "bert-base-uncased", policy_type: str = "advertisement"):
+    def __init__(self, model_name: str = "distilbert-base-uncased", policy_type: str = "advertisement"):
         """Initialize the classifier."""
         self.model_name = model_name
         self.policy_type = policy_type
@@ -63,16 +73,19 @@ class PolicyClassifier:
         
         self.prepare_model()
         
-        train_dataset = self.prepare_data(train_texts, train_labels)
-        
-        val_dataset = None
+        train_encodings = self.prepare_data(train_texts, train_labels)
+        train_dataset = ReviewDataset(train_encodings)
+
         if val_texts and val_labels:
-            val_dataset = self.prepare_data(val_texts, val_labels)
+            val_encodings = self.prepare_data(val_texts, val_labels)
+            val_dataset = ReviewDataset(val_encodings)
+        else:
+            val_dataset = None
         
         training_args = TrainingArguments(
             output_dir=output_dir,
             num_train_epochs=3,
-            per_device_train_batch_size=16,
+            per_device_train_batch_size=8,
             per_device_eval_batch_size=64,
             warmup_steps=500,
             weight_decay=0.01,
