@@ -3,7 +3,10 @@
 ## Overview
 
 Roundabout is an end-to-end Machine Learning/NLP pipeline for evaluating the quality and relevancy of Google location reviews.  
-It covers data preprocessing, feature extraction, model training, policy enforcement, and provides a simple UI for predictions.
+It covers data preprocessing, feature extraction, policy-based classification, and provides a simple UI for predictions.
+
+**Key principle:**  
+The system ensures robust and reproducible results by avoiding incremental training: each training run uses the full labeled dataset (concatenate old and new data if needed).
 
 ---
 
@@ -18,16 +21,12 @@ cd roundabout
 
 ### 2. Set Up the Environment
 
-Create and activate the conda environment:
-
 ```bash
 conda env create -f environment.yml
 conda activate roundabout
 ```
 
 ### 3. Install Additional Dependencies
-
-Some dependencies are managed via pip:
 
 ```bash
 pip install -r requirements.txt
@@ -36,10 +35,18 @@ pip install -r requirements.txt
 ### 4. Configure API Keys
 
 - Obtain an OpenAI API key: [Get an API key here](https://platform.openai.com/settings/organization/api-keys)
-- Create a `.env` file in the project root with the following content:
+- Create a `.env` file in the project root:
 
   ```
   OPENAI_API_KEY=your_openai_api_key_here
+  ```
+
+### 5. (Optional) Set Up Local LLM Fallback
+
+- Install [Ollama](https://ollama.com/download) and pull the Gemma model:
+  ```bash
+  ollama pull gemma:2b
+  ollama serve
   ```
 
 ---
@@ -49,84 +56,123 @@ pip install -r requirements.txt
 ```
 roundabout/
 ├─ README.md
-├─ .gitignore
 ├─ environment.yml
 ├─ requirements.txt
 ├─ data/
-│  ├─ raw/            # Original unprocessed datasets
+│  ├─ raw/            # Original datasets
 │  ├─ processed/      # Cleaned and preprocessed data
 │  └─ labeled/        # Labeled data with policy/relevance labels
-├─ scripts/           # Standalone scripts for each pipeline stage
+├─ scripts/           # Standalone scripts for pipeline stages
 ├─ src/
-│  ├─ preprocess/     # Data cleaning and text preprocessing
-│  ├─ features/       # Feature extraction modules
-│  ├─ policies/       # Policy enforcement and classifiers
-│  ├─ llm/            # LLM-based labeling utilities
+│  ├─ preprocess/     # Data cleaning
+│  ├─ features/       # Feature extraction
+│  ├─ policies/       # Classifiers & policy enforcement
+│  ├─ llm/            # LLM-based labeling
 │  └─ utils/          # Utility functions
 ├─ ui/                # Streamlit/FastAPI UI
 ├─ outputs/
 │  ├─ models/         # Saved trained models
-│  └─ predictions/    # Output predictions/results
+│  └─ predictions/    # Output predictions
 └─ experiments/       # Jupyter notebooks or experiments
 ```
 
 ---
 
-## How to Reproduce Results
+## Pipeline Flow
 
-1. **Prepare Data**  
-   Place your raw reviews CSV at `data/raw/reviews.csv`.
+Follow these steps to robustly reproduce results:
 
-2. **Preprocess Reviews**  
-   Run the preprocessing script to clean and normalize the data:
-   ```bash
-   python scripts/01_prepare_reviews.py
-   ```
-   Output: `data/processed/reviews_processed.csv`
+### 1. Prepare Data
 
-3. **Generate Pseudo-Labels**  
-   Use the LLM client to generate policy violation labels:
-   ```bash
-   python scripts/02_generate_labels.py
-   ```
-   Output: `data/labeled/reviews_with_labels.csv`
+- Place raw reviews in `data/raw/reviews.csv`.
+- Run preprocessing:
+  ```bash
+  python scripts/01_prepare_reviews.py
+  ```
+- Output: `data/processed/reviews_processed.csv`
 
-4. **Train Classifiers**  
-   Train BERT-based classifiers for each policy:
-   ```bash
-   python scripts/03_train_classifiers.py
-   ```
-   Output: Trained models in `outputs/models/`
+### 2. Generate Labels
 
-5. **Evaluate Models**  
-   Evaluate the trained classifiers:
-   ```bash
-   python scripts/04_eval.py
-   ```
-   Output: Evaluation results in `outputs/predictions/evaluation_results.json`
+- Generate policy violation labels with LLM:
+  ```bash
+  python scripts/02_generate_labels.py --overwrite
+  ```
+- Output: `data/labeled/reviews_with_labels.csv`
+- **Tip:** Always use `--overwrite` when regenerating labels to avoid incremental label inconsistencies.
 
-6. **Run the UI (Optional)**  
-   Launch the Streamlit app for interactive predictions:
-   ```bash
-   streamlit run ui/streamlit_app.py
-   ```
+### 3. Train Classifiers
+
+- Train BERT-based classifiers for each policy:
+  ```bash
+  python scripts/03_train_classifiers.py
+  ```
+- Output: `outputs/models/`
+- **Important:** Incremental training is **not allowed**. Each run uses the entire labeled dataset (concatenate old and new data if needed).
+
+### 4. Evaluate Models
+
+- Evaluate the trained classifiers:
+  ```bash
+  python scripts/04_eval.py
+  ```
+- Output: `outputs/predictions/evaluation_results.json`
+- **Note:** Robust evaluation handles small test sets and avoids stratification errors.
+
+### 5. Batch Inference on New Data
+
+- Run predictions on new/unlabeled reviews:
+  ```bash
+  python scripts/05_batch_inference.py --input data/processed/new_reviews.csv
+  ```
+- Output: `outputs/predictions/batch_predictions.csv`
+- **Input must have a `text_clean` column (preprocessed).**
+
+### 6. Run the UI (Optional)
+
+- Launch the Streamlit app for interactive predictions:
+  ```bash
+  streamlit run ui/streamlit_app.py
+  ```
+- Upload a CSV with a `text_clean` column and download predictions.
 
 ---
 
-## Notes & Troubleshooting
+## Robustness & Troubleshooting
 
-- Ensure the `roundabout` conda environment is **active** before running scripts.
-- Data files and outputs are not tracked by git (see `.gitignore`).
-- If you encounter "src not found" errors, check that all `__init__.py` files exist and are correct, then run in the root directory "$env:PYTHONPATH = $PWD"
-- If OpenAI API fails or rate limits, pseudo-labeling will fall back to a local LLM via Ollama. See [Gemma + Ollama integration](https://ai.google.dev/gemma/docs/integrations/ollama) for setup.
-- Error codes for OpenAI API are listed in the [OpenAI documentation](https://platform.openai.com/docs/guides/error-codes).
+- **Encoding:** Always ensure CSVs are UTF-8.
+- **Incremental Training Not Allowed:** Combine all labeled data before retraining.
+- **Fallback:** Ollama/Gemma is used if OpenAI API is unavailable.
+- **Small Test Sets:** Use larger test sets for more precise evaluation.
+- **Duplicates & Missing Columns:** Scripts handle them to prevent
+- **Environment:** Always activate the `roundabout` conda environment.
+- **Data Consistency:** Ensure `text_clean` and label columns exist.
+- **Encoding:** Convert to UTF-8 to avoid Unicode issues:
+  ```python
+  df = pd.read_csv('file.csv', encoding='latin1')
+  df.to_csv('file_utf8.csv', index=False, encoding='utf-8')
+  ```
+- **Module Import:** Ensure `__init__.py` exists and run scripts from project root.
+  Set Python path if needed:
+  ```powershell
+  $env:PYTHONPATH = $PWD
+  ```
 
 ---
 
-## Team / Contributors
+## Extending the Pipeline
+
+- **Adding Data:** Add raw reviews → preprocess → generate labels → retrain models.
+- **New Policies:** Update labeling prompts and extend `src/policies`.
+- **No Incremental Training:** Always train from a fresh combined dataset to ensure consistency.
+
+---
+
+## Contributors
 
 - Steve Chia
 - Xie Yanjun
 - Venice Phua
 - Tong Jia Jun
 - Lee Sze Ying
+
+---

@@ -34,9 +34,9 @@ class LLMClient:
         self.rate_limit_delay = 1.0  # seconds between requests
         self.gpt_failed = False
     
-    def classify_review(self, review_text: str, place_name: str = "") -> PolicyLabel:
+    def classify_review(self, review_text: str, rating_category: str = "") -> PolicyLabel:
         """Classify a single review for policy violations."""
-        prompt = self._build_classification_prompt(review_text, place_name)
+        prompt = self._build_classification_prompt(review_text, rating_category)
         if self.gpt_failed:
             # If GPT previously failed, always use Ollama
             return self.classify_review_ollama(prompt)
@@ -121,12 +121,12 @@ class LLMClient:
             
             for _, row in batch.iterrows():
                 review_text = row.get('text', '')
-                place_name = row.get('place_name', '')
+                rating_category = row.get('rating_category', '')
                 
                 try:
-                    label = self.classify_review(review_text, place_name)
+                    label = self.classify_review(review_text, rating_category)
                 except Exception as e:
-                    prompt = self._build_classification_prompt(review_text, place_name)
+                    prompt = self._build_classification_prompt(review_text, rating_category)
                     label = self.classify_review_ollama(prompt)
                     print(f"Error processing review {row.get('review_id')}: {e}")
 
@@ -157,30 +157,66 @@ class LLMClient:
         
         return pd.DataFrame(results)
     
-    def _build_classification_prompt(self, review_text: str, place_name: str = "") -> str:
+    def _build_classification_prompt(self, review_text: str, rating_category: str = "") -> str:
         """Build the classification prompt for GPT."""
         return f"""
+You are an expert at detecting policy violations in location reviews. Always respond with valid JSON.
+
 Analyze this location review and classify it for policy violations. Respond with valid JSON only.
 
-PLACE: {place_name}
+RATING CATEGORY: {rating_category}
 REVIEW: "{review_text}"
 
 POLICIES TO CHECK:
-1. Advertisement: Contains explicit promotional content, links, or marketing language (e.g., "visit our website", "best in town!", "special offer", "discount", "follow us on Instagram"). Simply mentioning price or value is NOT an advertisement.
-2. Irrelevant: Not about the location or unrelated to the rating category(e.g., personal stories, unrelated topics, or off-topic rants).
-3. Rant without visit: Complaint from someone who clearly states or strongly implies they have NOT visited (e.g., "never been", "I heard", "my friend said").
+1. Advertisement: Only flag as true if the review contains clear, explicit promotional content, links, or marketing language (e.g., "visit our website", "best in town!", "special offer", "discount", "follow us on Instagram"). Simply mentioning price, value, or recommending the place is NOT an advertisement.
+2. Irrelevant: Only flag as true if the review is clearly not about the location or not related to the rating category (e.g., personal stories, unrelated topics, or off-topic rants). If the review mentions food, service, or atmosphere in a way that fits the rating category, it is relevant.
+3. Rant without visit: Only flag as true if the reviewer clearly states or strongly implies they have NOT visited (e.g., "never been", "I heard", "my friend said", "people say"). If the reviewer describes a personal experience, do NOT flag this.
+
+Be conservative: If you are unsure, set all flags to false.
 
 EXAMPLES:
-- "Great food! Visit www.deals.com" → Advertisement: true, is_relevant: false
-- "I love my new car, this place is loud" → Irrelevant: true, is_relevant: false
-- "Never been but heard it's terrible" → Rant without visit: true, is_relevant: false
-- "Food was cold, service slow" → All false, is_relevant: true
-- "The pizza was delicious and the staff was friendly." → All false, is_relevant: true
-- "Prices are reasonable and portions are big." → All false, is_relevant: true
-- "I haven't been here, but my friend said it's bad." → Rant without visit: true, is_relevant: false
+- RATING CATEGORY: taste  
+  REVIEW: "Great food! Visit www.deals.com"  
+  → Advertisement: true, is_relevant: false
 
-Respond with JSON format:
-{{
+- RATING CATEGORY: ambience  
+  REVIEW: "I love my new car, this place is loud"  
+  → Irrelevant: true, is_relevant: false
+
+- RATING CATEGORY: taste  
+  REVIEW: "Never been but heard it's terrible"  
+  → Rant without visit: true, is_relevant: false
+
+- RATING CATEGORY: taste  
+  REVIEW: "Food was cold, service slow"  
+  → All false, is_relevant: true
+
+- RATING CATEGORY: taste  
+  REVIEW: "The pizza was delicious and the staff was friendly."  
+  → All false, is_relevant: true
+
+- RATING CATEGORY: menu  
+  REVIEW: "Prices are reasonable and portions are big."  
+  → All false, is_relevant: true
+
+- RATING CATEGORY: food  
+  REVIEW: "I haven't been here, but my friend said it's bad."  
+  → Rant without visit: true, is_relevant: false
+
+- RATING CATEGORY: taste  
+  REVIEW: "The pizza was delicious and the staff was friendly."  
+  → {
+      "is_advertisement": false,
+      "is_irrelevant": false,
+      "is_rant_without_visit": false,
+      "confidence_advertisement": 0.01,
+      "confidence_irrelevant": 0.01,
+      "confidence_rant": 0.01,
+      "reasoning": "Describes food and staff, all relevant to the restaurant."
+    }
+
+Respond in this JSON format:
+{
   "is_advertisement": boolean,
   "is_irrelevant": boolean,
   "is_rant_without_visit": boolean,
@@ -188,5 +224,5 @@ Respond with JSON format:
   "confidence_irrelevant": float (0.0-1.0),
   "confidence_rant": float (0.0-1.0),
   "reasoning": "Brief explanation"
-}}
+}
 """

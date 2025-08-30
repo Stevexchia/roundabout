@@ -70,7 +70,7 @@ def main():
     args = parser.parse_args()
     
     # Paths
-    input_path = Path("data/labeled/reviews_with_labels.csv")
+    input_path = Path("data/labeled/reviews_validation.csv")
     models_dir = Path("outputs/models")
     output_dir = Path("outputs/predictions")
     output_path = output_dir / "evaluation_results.json"
@@ -92,9 +92,46 @@ def main():
         labeled_df, 
         test_size=args.test_size, 
         random_state=args.random_seed,
-        stratify=labeled_df[['is_advertisement', 'is_irrelevant', 'is_rant_without_visit']].sum(axis=1)
+        #can be used for larger datasets to ensure all classes are represented in both sets
+        #stratify=labeled_df[['is_advertisement', 'is_irrelevant', 'is_rant_without_visit']].sum(axis=1)
     )
     
     print(f"Test set size: {len(test_df)} reviews")
     
     # Load trained models
+    print("Loading trained classifiers...")
+    multi_classifier = MultiPolicyClassifier()
+    multi_classifier.load_all_models(models_dir=models_dir)
+
+    # Evaluate each policy respectively
+    evaluation_results = {}
+    policy_map = {
+    'advertisement': 'is_advertisement',
+    'irrelevant': 'is_irrelevant',
+    'rant_without_visit': 'is_rant_without_visit'
+    }
+    for policy, label_col in policy_map.items():
+        print(f"Evaluating {policy} classifier...")
+        y_true = test_df[label_col].astype(int).tolist()
+        y_pred = multi_classifier.classifiers[policy].predict(test_df['text_clean'].tolist())
+        y_pred = [1 if p['is_violation'] else 0 for p in y_pred]
+        
+        from sklearn.metrics import (
+            accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
+        )
+        evaluation_results[policy] = {
+            'accuracy': accuracy_score(y_true, y_pred),
+            'precision': precision_score(y_true, y_pred, zero_division=0),
+            'recall': recall_score(y_true, y_pred, zero_division=0),
+            'f1_score': f1_score(y_true, y_pred, zero_division=0),
+            'confusion_matrix': confusion_matrix(y_true, y_pred).tolist(),
+            'classification_report': classification_report(y_true, y_pred, zero_division=0, output_dict=True)
+        }
+
+    report = create_detailed_report(evaluation_results, test_df)
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+    print(f"Saved evaluation report to {output_path}")
+
+if __name__ == "__main__":
+    main()
