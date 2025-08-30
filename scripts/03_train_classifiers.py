@@ -11,13 +11,12 @@ from src.policies import MultiPolicyClassifier
 import argparse
 import json
 
-
 def main():
     # Parse arguments
     parser = argparse.ArgumentParser(description='Train policy classifiers')
     parser.add_argument('--model-name', type=str, default='bert-base-uncased',
                        help='Base model to use')
-    parser.add_argument('--min-samples', type=int, default=50,
+    parser.add_argument('--min-samples', type=int, default=5,
                        help='Minimum samples per class for training')
     args = parser.parse_args()
     

@@ -117,7 +117,7 @@ class PolicyClassifier:
                 return_all_scores=True
             )
             self.is_trained = True
-            print(f"✅ Loaded {self.policy_type} classifier from {model_path}")
+            print(f"Loaded {self.policy_type} classifier from {model_path}")
         except Exception as e:
             print(f"Error loading model: {e}")
             raise
@@ -227,7 +227,7 @@ class MultiPolicyClassifier:
             if model_path.exists():
                 classifier.load_model(str(model_path))
             else:
-                print(f"⚠️ Model not found: {model_path}")
+                print(f"Model not found: {model_path}")
     
     def predict_all(self, texts: List[str]) -> pd.DataFrame:
         """Predict all policy violations AND overall relevance for texts."""

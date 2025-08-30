@@ -14,15 +14,19 @@ load_dotenv()  # take environment variables from .env file
 
 def main():
     # for users to parse CLI arguments
-    parser = argparse.ArgumentParser(description='Generate pseudo-labels using GPT4')
+    parser = argparse.ArgumentParser(description='Generate pseudo-labels using GPT or Ollama fallback')
     parser.add_argument('--api-key', type=str, help='OpenAI API key', 
                        default=os.getenv('OPENAI_API_KEY'))
-    parser.add_argument('--model', type=str, default='gpt-3.5-turbo-instruct', 
+    parser.add_argument('--model', type=str, default='gpt-4o', 
                        help='GPT model to use')
+    parser.add_argument('--ollama-model', type=str, default='gemma3:1b', 
+                        help='Ollama local model to use for fallback')
     parser.add_argument('--sample-size', type=int, default=None,
                        help='Number of reviews to label (default: all)')
     parser.add_argument('--batch-size', type=int, default=5,
                        help='Batch size for API calls')
+    parser.add_argument('--overwrite', action='store_true',
+                       help='Whether to overwrite existing output file')
     args = parser.parse_args()
     
     if not args.api_key:
@@ -32,7 +36,6 @@ def main():
     input_path = Path("data/processed/reviews_processed.csv")
     output_dir = Path("data/labeled")
     output_path = output_dir / "reviews_with_labels.csv"
-    
     output_dir.mkdir(parents=True, exist_ok=True)
     
     print("Loading processed reviews...")
@@ -46,14 +49,13 @@ def main():
         reviews_df = reviews_df.sample(n=args.sample_size, random_state=42)
         print(f"Sampled {args.sample_size} reviews for labeling")
     
-    print(f"Initializing {args.model} client...")
-    llm_client = LLMClient(api_key=args.api_key, model=args.model)
+    print(f"Initializing LLM client (OpenAI: {args.model}, Ollama fallback: {args.ollama_model})...")
+    llm_client = LLMClient(api_key=args.api_key, model=args.model, ollama_model=args.ollama_model)
     
     print("Generating pseudo-labels...")
-    labels_df = llm_client.classify_batch(reviews_df, batch_size=args.batch_size, output_path=str(output_path))
+    labels_df = llm_client.classify_batch(reviews_df, batch_size=args.batch_size, output_path=str(output_path), overwrite=args.overwrite)
     
     labeled_df = reviews_df.merge(labels_df, on='review_id', how='left')
-    
     labeled_df.to_csv(output_path, index=False)
     
     # output summary statistics

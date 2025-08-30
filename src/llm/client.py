@@ -5,6 +5,8 @@ LLM client for generating pseudo-labels using OpenAI GPT models.
 import openai
 import json
 import time
+import requests
+import re
 from typing import Dict, List, Optional, Tuple
 import pandas as pd
 from dataclasses import dataclass
@@ -25,14 +27,19 @@ class PolicyLabel:
 class LLMClient:
     """Client for interacting with OpenAI GPT models."""
     
-    def __init__(self, api_key: str, model: str = "gpt-5-mini"):
+    def __init__(self, api_key: str, model: str = "gpt-4o", ollama_model: str = "gemma3:1b"):
         self.client = openai.OpenAI(api_key=api_key)
         self.model = model
-        self.rate_limit_delay = 1.0  # seconds between requests to ensure we dont hit the limit
+        self.ollama_model = ollama_model
+        self.rate_limit_delay = 1.0  # seconds between requests
+        self.gpt_failed = False
     
     def classify_review(self, review_text: str, place_name: str = "") -> PolicyLabel:
         """Classify a single review for policy violations."""
         prompt = self._build_classification_prompt(review_text, place_name)
+        if self.gpt_failed:
+            # If GPT previously failed, always use Ollama
+            return self.classify_review_ollama(prompt)
         
         try:
             response = self.client.chat.completions.create(
@@ -60,17 +67,51 @@ class LLMClient:
             
         except Exception as e:
             print(f"Error processing review: {e}")
-            return PolicyLabel(False, False, False, 0.0, 0.0, 0.0, f"Error: {str(e)}")
-    
-    def classify_batch(self, reviews_df: pd.DataFrame, batch_size: int = 5, output_path: Optional[str] = None) -> pd.DataFrame:
+            self.gpt_failed = True
+            return self.classify_review_ollama(prompt)
+        
+    def classify_review_ollama(self, prompt: str) -> PolicyLabel:
+        try:
+            response = requests.post(
+                "http://localhost:11434/api/generate",
+                json={
+                    "model": self.ollama_model,
+                    "prompt": prompt,
+                    "stream": False
+                },
+                timeout=60
+            )
+            response.raise_for_status()
+            result_text = response.json().get("response", "").strip()
+            json_match = re.search(r"\{.*\}", result_text, re.DOTALL)
+            if json_match:
+                result_json = json.loads(json_match.group(0))
+            else:
+                raise ValueError("No valid JSON found in Ollama response")
+            return PolicyLabel(
+                is_advertisement=result_json.get("is_advertisement", False),
+                is_irrelevant=result_json.get("is_irrelevant", False),
+                is_rant_without_visit=result_json.get("is_rant_without_visit", False),
+                confidence_advertisement=result_json.get("confidence_advertisement", 0.5),
+                confidence_irrelevant=result_json.get("confidence_irrelevant", 0.5),
+                confidence_rant=result_json.get("confidence_rant", 0.5),
+                reasoning=result_json.get("reasoning", "")
+            )
+        except Exception as e:
+            print(f"Ollama failed: {e}")
+            return PolicyLabel(False, False, False, 0.0, 0.0, 0.0, f"Ollama error: {str(e)}")
+        
+    def classify_batch(self, reviews_df: pd.DataFrame, batch_size: int = 5, output_path: Optional[str] = None, overwrite: bool = False) -> pd.DataFrame:
         results = []
 
-        if output_path and Path(output_path).exists():
+        if output_path and Path(output_path).exists() and not overwrite:
             existing_df = pd.read_csv(output_path)
             labeled_ids = set(existing_df['review_id'])
             reviews_df = reviews_df[~reviews_df['review_id'].isin(labeled_ids)]
             results.extend(existing_df.to_dict('records'))
             print(f"Resuming labeling, skipping {len(labeled_ids)} already labeled reviews")
+        elif output_path and Path(output_path).exists() and overwrite:
+            print(f"Overwriting existing file at {output_path}")
 
         total_batches = (len(reviews_df) + batch_size - 1) // batch_size
         
@@ -85,7 +126,8 @@ class LLMClient:
                 try:
                     label = self.classify_review(review_text, place_name)
                 except Exception as e:
-                    label = PolicyLabel(False, False, False, 0.0, 0.0, 0.0, f"Error: {str(e)}")
+                    prompt = self._build_classification_prompt(review_text, place_name)
+                    label = self.classify_review_ollama(prompt)
                     print(f"Error processing review {row.get('review_id')}: {e}")
 
                 is_relevant = not (label.is_advertisement or label.is_irrelevant or label.is_rant_without_visit)
@@ -93,6 +135,9 @@ class LLMClient:
                 #adds to the results data
                 results.append({
                     'review_id': row.get('review_id', ''),
+                    'rating_category': row.get('rating_category', ''),
+                    'text': row.get('text', ''),
+                    'text_clean': row.get('text_clean', ''),
                     'is_advertisement': label.is_advertisement,
                     'is_irrelevant': label.is_irrelevant,
                     'is_rant_without_visit': label.is_rant_without_visit,
@@ -121,15 +166,18 @@ PLACE: {place_name}
 REVIEW: "{review_text}"
 
 POLICIES TO CHECK:
-1. Advertisement: Contains promotional content, links, or marketing
-2. Irrelevant: Not about the location (personal stories unrelated to place)
-3. Rant without visit: Complaint from someone who clearly hasn't been there
+1. Advertisement: Contains explicit promotional content, links, or marketing language (e.g., "visit our website", "best in town!", "special offer", "discount", "follow us on Instagram"). Simply mentioning price or value is NOT an advertisement.
+2. Irrelevant: Not about the location or unrelated to the rating category(e.g., personal stories, unrelated topics, or off-topic rants).
+3. Rant without visit: Complaint from someone who clearly states or strongly implies they have NOT visited (e.g., "never been", "I heard", "my friend said").
 
 EXAMPLES:
-- "Great food! Visit www.deals.com" → Advertisement: true
-- "I love my new car, this place is loud" → Irrelevant: true  
-- "Never been but heard it's terrible" → Rant without visit: true
-- "Food was cold, service slow" → All false (legitimate complaint)
+- "Great food! Visit www.deals.com" → Advertisement: true, is_relevant: false
+- "I love my new car, this place is loud" → Irrelevant: true, is_relevant: false
+- "Never been but heard it's terrible" → Rant without visit: true, is_relevant: false
+- "Food was cold, service slow" → All false, is_relevant: true
+- "The pizza was delicious and the staff was friendly." → All false, is_relevant: true
+- "Prices are reasonable and portions are big." → All false, is_relevant: true
+- "I haven't been here, but my friend said it's bad." → Rant without visit: true, is_relevant: false
 
 Respond with JSON format:
 {{
