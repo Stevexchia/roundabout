@@ -103,35 +103,24 @@ def main():
     multi_classifier = MultiPolicyClassifier()
     multi_classifier.load_all_models(models_dir=models_dir)
 
-    # Evaluate each policy respectively
-    evaluation_results = {}
-    policy_map = {
-    'advertisement': 'is_advertisement',
-    'irrelevant': 'is_irrelevant',
-    'rant_without_visit': 'is_rant_without_visit'
-    }
-    for policy, label_col in policy_map.items():
-        print(f"Evaluating {policy} classifier...")
-        y_true = test_df[label_col].astype(int).tolist()
-        y_pred = multi_classifier.classifiers[policy].predict(test_df['text_clean'].tolist())
-        y_pred = [1 if p['is_violation'] else 0 for p in y_pred]
-        
-        from sklearn.metrics import (
-            accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
-        )
-        evaluation_results[policy] = {
-            'accuracy': accuracy_score(y_true, y_pred),
-            'precision': precision_score(y_true, y_pred, zero_division=0),
-            'recall': recall_score(y_true, y_pred, zero_division=0),
-            'f1_score': f1_score(y_true, y_pred, zero_division=0),
-            'confusion_matrix': confusion_matrix(y_true, y_pred).tolist(),
-            'classification_report': classification_report(y_true, y_pred, zero_division=0, output_dict=True)
-        }
-
+    # Use the improved evaluate_all method that handles rating categories
+    print("Evaluating all classifiers...")
+    evaluation_results = multi_classifier.evaluate_all(test_df)
+    
+    # Create detailed report
     report = create_detailed_report(evaluation_results, test_df)
+    
+    # Save results
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
     print(f"Saved evaluation report to {output_path}")
+    
+    # Print summary
+    print("\nEvaluation Summary:")
+    print("-" * 50)
+    for policy_type, metrics in evaluation_results.items():
+        print(f"{policy_type.upper()}: F1={metrics['f1_score']:.3f}, "
+              f"Precision={metrics['precision']:.3f}, Recall={metrics['recall']:.3f}")
 
 if __name__ == "__main__":
     main()

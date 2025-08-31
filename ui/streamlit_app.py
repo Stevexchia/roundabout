@@ -38,7 +38,7 @@ if uploaded_file is not None:
                 multi_classifier = MultiPolicyClassifier()
                 models_dir = Path("outputs/models")
                 multi_classifier.load_all_models(models_dir=models_dir)
-                results_df = multi_classifier.predict_all(df['text_clean'].tolist())
+                results_df = multi_classifier.predict_all(df)
                 if 'review_id' in df.columns:
                     results_df['review_id'] = df['review_id']
 
