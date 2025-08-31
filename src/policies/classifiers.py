@@ -282,6 +282,7 @@ class MultiPolicyClassifier:
             text = row['text_clean']
             rating_category = row.get('rating_category', None)
             result = {
+                'review_id': row.get('review_id', None),
                 'text_index': i,
                 'text': text,
                 'rating_category': rating_category,

@@ -19,3 +19,5 @@ python-dotenv #https://pypi.org/project/python-dotenv/
 transformers[torch]
 accelerate>=0.26.0
 hf_xet
+matplotlib
+seaborn
